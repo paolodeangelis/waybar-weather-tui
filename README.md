@@ -9,12 +9,16 @@ It does two things:
 
 This is a useful personal setup, not a polished app. It was heavily vibe-coded, but it works well enough to share.
 
+![Waybar weather TUI screenshot](img/screen.png)
+
 ## What it does
 
 - current weather in Waybar
 - tooltip with forecast + alerts
 - TUI popup with a bigger hourly/daily view
 - simple refresh and location helpers
+
+![Waybar weather TUI demo](img/screen.gif)
 
 ## Repo files
 
