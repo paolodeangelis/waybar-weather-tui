@@ -1,5 +1,10 @@
 # waybar-weather-tui
 
+[![Python](https://img.shields.io/badge/python-3-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-Hyprland%20%2F%20Waybar-3b82f6)](https://github.com/Alexays/Waybar)
+[![License](https://img.shields.io/github/license/paolodeangelis/waybar-weather-tui)](LICENSE)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](.pre-commit-config.yaml)
+
 Small Python weather script for my Waybar on Hyprland / Omarchy.
 
 It does two things:
@@ -82,3 +87,11 @@ Add that at the end of your Hyprland configuration file.
 - written for my Hyprland / Omarchy desktop
 - tested as a custom Waybar module, not as a generic package
 - if you want a cleaner production-ready project, this is not that
+
+## Contributing
+
+Contributions are welcome, especially if you want to:
+
+- add useful features
+- improve the TUI aesthetics
+- make the script faster or cleaner
