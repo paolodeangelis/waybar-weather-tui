@@ -27,6 +27,8 @@ try:
 except Exception:
     wcswidth = None
 
+__version__ = "0.1.0"
+
 # ==============================================================================
 # PATHS
 # ==============================================================================
@@ -727,7 +729,7 @@ def build_weather_url(lat: float, lon: float) -> str:
             "precipitation", "is_day",
         ]),
         "hourly": ",".join([
-            "temperature_2m", "weather_code", "precipitation_probability", "precipitation",
+            "temperature_2m", "weather_code", "is_day", "precipitation_probability", "precipitation",
             "apparent_temperature", "relative_humidity_2m", "surface_pressure", "wind_speed_10m",
             "wind_direction_10m", "wind_gusts_10m", "uv_index",
         ]),
@@ -846,6 +848,27 @@ def livecheck_tooltip_lines(livecheck: Optional[Dict[str, Any]]) -> List[str]:
         f"Detected: {guess.get('label', 'Unknown')} ({guess.get('source', 'unknown')})",
         f"Distance: {safe_float(livecheck.get(
             'distance_km')):.1f} km / threshold {safe_float(livecheck.get('threshold_km')):.1f} km",  # pylint: disable=E203
+    ]
+
+
+def livecheck_panel_lines(livecheck: Optional[Dict[str, Any]]) -> List[str]:
+    if not livecheck:
+        return ["Location check unavailable."]
+    if livecheck.get("status") == "no_guess":
+        return [
+            "Location check unavailable.",
+            "GeoClue/IP guess could not be resolved.",
+        ]
+    if livecheck.get("status") != "ok":
+        return ["Location check unavailable."]
+    ref_label = livecheck.get("reference_label", "Configured location")
+    guess = livecheck.get("guess", {})
+    status = "Mismatch detected." if livecheck.get("warning") else "Configured and detected locations are aligned."
+    return [
+        status,
+        f"Stored: {ref_label}",
+        f"Detected: {guess.get('label', 'Unknown')} ({guess.get('source', 'unknown')})",
+        f"Distance: {safe_float(livecheck.get('distance_km')):.1f} km / threshold {safe_float(livecheck.get('threshold_km')):.1f} km",
     ]
 
 # ==============================================================================
@@ -973,10 +996,8 @@ def find_precipitation_events(hourly_rows: List[Dict[str, Any]], min_event_mm: f
         if not event:
             return
         event["duration_hours"] = len(event["hours"])
-        event["start_label"] = event["hours"][0]["label"]
-        event["end_label"] = event["hours"][-1]["label"]
         peak_hour = max(event["hours"], key=lambda h: safe_float(h.get("rain_mm")))
-        event["peak_label"] = peak_hour["label"]
+        event["peak_time"] = str(peak_hour.get("time", ""))
         event["peak_mm"] = safe_float(peak_hour.get("rain_mm"))
         event["total_mm"] = sum(safe_float(h.get("rain_mm")) for h in event["hours"])
         event["storm"] = any(is_storm_code(h.get("weather_code")) for h in event["hours"])
@@ -1021,6 +1042,7 @@ def classify_precipitation_event(event: Dict[str, Any]) -> Dict[str, bool]:
 def precipitation_event_text(event: Dict[str, Any], prefix: str) -> str:
     start_ts = str(event.get("hours", [{}])[0].get("time", ""))
     end_ts = str(event.get("hours", [{}])[-1].get("time", ""))
+    peak_ts = str(event.get("peak_time", ""))
     same_day = bool(start_ts) and bool(end_ts) and start_ts[:10] == end_ts[:10]
     if same_day:
         interval = f"{dt_alert_label(start_ts)}–{fmt_clock(end_ts)}"
@@ -1028,8 +1050,7 @@ def precipitation_event_text(event: Dict[str, Any], prefix: str) -> str:
         interval = f"{dt_alert_label(start_ts)}–{dt_alert_label(end_ts)}"
     return (
         f"{prefix}: {interval}, "
-        f"peak around {dt_alert_label(str(max(event.get('hours', [{}]), key=lambda h: safe_float(
-            h.get('rain_mm'))).get('time', event.get('peak_label', ''))))} "
+        f"peak around {dt_alert_label(peak_ts)} "
         f"at {safe_float(event.get('peak_mm')):.1f} mm/h, "
         f"{safe_float(event.get('total_mm')):.1f} mm in the interval."
     )
@@ -1169,9 +1190,14 @@ def extract_model(payload: Dict[str, Any], icon_mode: str) -> Dict[str, Any]:
                for i, ts in enumerate(air_hourly.get("time", []))} if air_hourly else {}
     gusts = hourly.get("wind_gusts_10m", [None] * len(hourly_times))
     uvs = hourly.get("uv_index", [None] * len(hourly_times))
+    is_day_flags = hourly.get("is_day", [1] * len(hourly_times))
     hourly_rows = []
     for i in range(start_idx, len(hourly_times)):
-        desc, icon, _ = weather_icon_and_class(safe_int(hourly["weather_code"][i]), True, icon_mode)
+        desc, icon, _ = weather_icon_and_class(
+            safe_int(hourly["weather_code"][i]),
+            bool(safe_int(is_day_flags[i], 1)),
+            icon_mode,
+        )
         ts = hourly["time"][i]
         hourly_rows.append({
             "time": ts,
@@ -1591,7 +1617,14 @@ def render_tui(model: Dict[str, Any], colored: bool, livecheck: Optional[Dict[st
                 lines.append(fit_cell(wrapped, total_width))
     else:
         lines.append(fit_cell(theme.ok('General good weather conditions.'), total_width))
-#    lines.extend(["", fit_cell(theme.dim('Keys: j/k ↑/↓ PgUp/PgDn g/G r q'), total_width)])
+    if show_location_check:
+        lines.extend([
+            "",
+            fit_cell(theme.section_side('LOCATION CHECK'), total_width),
+            fit_cell(theme.line(hr(width=total_width)), total_width),
+        ])
+        for entry in livecheck_panel_lines(livecheck):
+            lines.append(fit_cell(entry, total_width))
     return "\n".join(lines)
 
 # ==============================================================================
@@ -1755,6 +1788,7 @@ def main() -> int:
         description="Weather widget/TUI for Waybar and Omarchy using Open-Meteo forecast and air-quality data.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--tui", action="store_true",
                         help="Render the terminal dashboard instead of Waybar JSON output")
     parser.add_argument("--hold", action="store_true",
